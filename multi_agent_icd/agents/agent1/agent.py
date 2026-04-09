@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from multi_agent_icd.agents.agent1.prompt import build_agent1_prompts
+from multi_agent_icd.agents.agent1.schema import Agent1CaseSummary
 from multi_agent_icd.providers import OpenAIResponsesLLM
 from multi_agent_icd.utils.clinical_text import (
     build_evidence_index,
@@ -61,6 +62,7 @@ class Agent1PrimaryAnalyzer:
                     "role": "primary_analyzer",
                     "model": self.model_name or "",
                 },
+                response_model=Agent1CaseSummary,
             )
         elif hasattr(self.llm, "generateJson"):
             raw_result = self.llm.generateJson(
@@ -71,6 +73,7 @@ class Agent1PrimaryAnalyzer:
                     "role": "primary_analyzer",
                     "model": self.model_name or "",
                 },
+                response_model=Agent1CaseSummary,
             )
         else:
             raise AttributeError("llm must expose generate_json(...) or generateJson(...).")

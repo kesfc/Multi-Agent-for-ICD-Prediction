@@ -68,6 +68,7 @@ Required inputs:
 - a model name passed explicitly from the CLI or controller
 
 `agent1` no longer uses the old local heuristic fallback as its default execution path.
+It now uses OpenAI Structured Outputs through the official Python SDK `responses.parse(...)` API with a Pydantic response model.
 
 ## Agent 1 output shape
 
