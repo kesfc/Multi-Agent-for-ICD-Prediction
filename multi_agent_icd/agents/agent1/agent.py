@@ -76,15 +76,10 @@ class Agent1PrimaryAnalyzer:
             raise AttributeError("llm must expose generate_json(...) or generateJson(...).")
 
         parsed = _try_parse_json(raw_result)
-        return normalize_agent1_output(
-            parsed,
-            evidence_index,
-            {
-                "patient_snapshot": patient_snapshot,
-                "note_summary": {"chief_complaint": get_primary_complaint(evidence_index)},
-                "note_text_length": len(normalized_note),
-            },
-        )
+        chief_complaint = get_primary_complaint(evidence_index)
+        if chief_complaint and not parsed.get("chief_complaint"):
+            parsed["chief_complaint"] = chief_complaint
+        return normalize_agent1_output(parsed, patient_context=patient_snapshot)
 
 
 def run_agent1(

@@ -4,42 +4,37 @@ import json
 
 
 AGENT_1_JSON_TEMPLATE = {
-    "patient_snapshot": {
-        "age": None,
-        "sex": None,
-        "encounter_type": None,
-        "care_setting": None,
-    },
-    "note_summary": {
-        "chief_complaint": None,
-        "one_liner": "",
-        "coding_focus": "",
-    },
-    "primary_diagnosis_candidates": [
-        {
-            "label": "",
-            "section": "",
-            "evidence_ids": ["E1"],
-            "confidence": "high",
-        }
+    "gender": "male",
+    "chief_complaint": "l2 fracture, back pain",
+    "procedure": [
+        "l2 corpectomy retroperitoneal approach",
+        "revision of posterior l1-l3 fusion",
     ],
-    "active_conditions": [
-        {
-            "label": "",
-            "status": "confirmed",
-            "section": "",
-            "evidence_ids": ["E1"],
-            "confidence": "high",
-        }
+    "history_present_illness": "patient sustained an l2 fracture after jumping from a second-floor window and had persistent back pain despite conservative treatment.",
+    "past_medical_history": ["mitral valve prolapse", "headaches", "gerd"],
+    "physical_exam_discharge": [
+        "afebrile",
+        "vital signs stable",
+        "no apparent distress",
+        "back incision clean dry intact",
+        "strength and sensation intact",
     ],
-    "symptoms_and_signs": [{"label": "", "section": "", "evidence_ids": ["E2"]}],
-    "procedures_and_treatments": [{"label": "", "section": "", "evidence_ids": ["E3"]}],
-    "medications": [{"label": "", "action": "started", "evidence_ids": ["E4"]}],
-    "tests_and_results": [{"label": "", "result": "", "evidence_ids": ["E5"]}],
-    "risk_factors_and_history": [{"label": "", "section": "", "evidence_ids": ["E6"]}],
-    "uncertainty_or_exclusions": [{"label": "", "reason": "", "evidence_ids": ["E7"]}],
-    "coding_clues": [{"clue": "", "rationale": "", "evidence_ids": ["E8"]}],
-    "missing_information": ["Need laterality for the final code."],
+    "pertinent_results": [
+        "abdominal x-ray large bowel dilation consistent with ileus",
+        "ultrasound negative for dvt",
+        "cta chest negative for pulmonary embolism",
+        "small pleural effusions and atelectasis",
+        "spine x-ray postsurgical changes with no acute fracture",
+    ],
+    "hospital_course": [
+        "underwent l2 corpectomy and posterior fusion revision",
+        "postoperative uncontrolled back pain requiring medication adjustment",
+        "large bowel ileus improved with bowel regimen",
+        "tachycardia workup negative for dvt and pe",
+        "transient oxygen desaturation during sleep requiring supplemental oxygen",
+        "new right-sided lumbar pain with stable repeat imaging",
+    ],
+    "discharge_diagnosis": ["l2 fracture", "back pain"],
 }
 
 
@@ -53,13 +48,14 @@ def build_agent1_prompts(
 
     system_prompt = " ".join(
         [
-            "You are Agent 1 in a multi-agent ICD coding system.",
-            "Your role is to read raw clinical text and convert it into a coding-ready structured case summary.",
+            "You are Agent 1 in a multi-agent clinical coding system.",
+            "Your job is to wash a raw discharge-style case into a compact structured JSON summary.",
+            "Return JSON only.",
+            "Do not explain your reasoning.",
             "Do not predict ICD codes.",
-            "Focus on coding-relevant facts: diagnoses, symptoms, procedures, medications, tests, timeline, chronicity, acuity, laterality, linkage language, and exclusions.",
-            "Only cite evidence IDs that appear in the provided evidence index.",
-            "If information is uncertain, contested, ruled out, or missing, say so explicitly.",
-            "Return valid JSON only.",
+            "Keep the output clinically faithful but concise.",
+            "Preserve important abbreviations such as DVT, PE, CTA, EKG, GERD.",
+            "Remove PHI and avoid narrative repetition.",
         ]
     )
 
@@ -74,15 +70,16 @@ def build_agent1_prompts(
             "Raw clinical note:",
             note_text,
             "",
-            "Return JSON that matches this shape exactly:",
+            "Return JSON that matches this structure closely:",
             json.dumps(AGENT_1_JSON_TEMPLATE, indent=2),
             "",
-            "Rules:",
-            "- Keep labels concise and clinically meaningful.",
-            "- Use evidence_ids everywhere possible.",
-            "- Prefer confirmed diagnoses over speculative ones in primary_diagnosis_candidates.",
-            "- Put unresolved coding questions in missing_information.",
-            "- If a field is unknown, use null, an empty string, or an empty array as appropriate.",
+            "Formatting rules:",
+            "- gender should be a short value like male, female, or unknown.",
+            "- chief_complaint should be a short string.",
+            "- procedure, past_medical_history, physical_exam_discharge, pertinent_results, hospital_course, and discharge_diagnosis should be arrays of short cleaned phrases.",
+            "- history_present_illness should be a compact prose sentence or two.",
+            "- Prefer normalized clinical phrases over full copied sentences.",
+            "- Do not invent diagnoses or procedures that are not supported by the note.",
         ]
     )
 

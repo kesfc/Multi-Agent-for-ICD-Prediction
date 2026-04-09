@@ -69,6 +69,47 @@ Required inputs:
 
 `agent1` no longer uses the old local heuristic fallback as its default execution path.
 
+## Agent 1 output shape
+
+`agent1` is now designed to output a compact cleaned case summary similar to:
+
+```json
+{
+  "gender": "male",
+  "chief_complaint": "l2 fracture, back pain",
+  "procedure": [
+    "l2 corpectomy retroperitoneal approach",
+    "revision of posterior l1-l3 fusion"
+  ],
+  "history_present_illness": "patient sustained an l2 fracture after trauma and continued to have persistent back pain despite treatment.",
+  "past_medical_history": [
+    "mitral valve prolapse",
+    "headaches",
+    "gerd"
+  ],
+  "physical_exam_discharge": [
+    "afebrile",
+    "vital signs stable",
+    "back incision clean dry intact",
+    "strength and sensation intact"
+  ],
+  "pertinent_results": [
+    "abdominal x-ray large bowel dilation consistent with ileus",
+    "ultrasound negative for dvt",
+    "cta chest negative for pulmonary embolism"
+  ],
+  "hospital_course": [
+    "postoperative uncontrolled back pain requiring medication adjustment",
+    "large bowel ileus improved with bowel regimen",
+    "tachycardia workup negative for dvt and pe"
+  ],
+  "discharge_diagnosis": [
+    "l2 fracture",
+    "back pain"
+  ]
+}
+```
+
 Example:
 
 ```python
