@@ -49,11 +49,12 @@ def build_agent1_prompts(
     system_prompt = " ".join(
         [
             "You are Agent 1 in a multi-agent clinical coding system.",
-            "Your job is to wash a raw discharge-style case into a compact structured JSON summary.",
+            "Your job is to turn a raw discharge-style note into a compact structured JSON summary for downstream ICD coding.",
             "Return JSON only.",
             "Do not explain your reasoning.",
             "Do not predict ICD codes.",
             "Keep the output clinically faithful but concise.",
+            "Preserve diagnosis, procedure, acuity, and complication cues that matter for coding.",
             "Preserve important abbreviations such as DVT, PE, CTA, EKG, GERD.",
             "Remove PHI and avoid narrative repetition.",
         ]
@@ -79,6 +80,7 @@ def build_agent1_prompts(
             "- procedure, past_medical_history, physical_exam_discharge, pertinent_results, hospital_course, and discharge_diagnosis should be arrays of short cleaned phrases.",
             "- history_present_illness should be a compact prose sentence or two.",
             "- Prefer normalized clinical phrases over full copied sentences.",
+            "- Preserve laterality, acuity, complication, postoperative, and causal wording when supported.",
             "- Do not invent diagnoses or procedures that are not supported by the note.",
         ]
     )

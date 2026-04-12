@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from multi_agent_icd import run_agent1
+from multi_agent_icd import DEFAULT_QWEN_MODEL_NAME, run_agent1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -12,9 +12,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("note_path", help="Path to a UTF-8 text file containing the clinical note.")
     parser.add_argument(
         "--model",
-        required=True,
         dest="model_name",
-        help="Required OpenAI model name, for example gpt-5 or gpt-4.1.",
+        default=DEFAULT_QWEN_MODEL_NAME,
+        help="Local Qwen model id or local path. Defaults to the single-A100 friendly Qwen FP8 model.",
     )
     parser.add_argument(
         "--context",

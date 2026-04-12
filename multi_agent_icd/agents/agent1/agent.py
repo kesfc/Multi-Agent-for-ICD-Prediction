@@ -5,7 +5,7 @@ from typing import Any
 
 from multi_agent_icd.agents.agent1.prompt import build_agent1_prompts
 from multi_agent_icd.agents.agent1.schema import Agent1CaseSummary
-from multi_agent_icd.providers import OpenAIResponsesLLM
+from multi_agent_icd.providers import LocalQwenLLM
 from multi_agent_icd.utils.clinical_text import (
     build_evidence_index,
     extract_patient_snapshot,
@@ -29,11 +29,8 @@ class Agent1PrimaryAnalyzer:
         model_name: str | None = None,
         llm: Any | None = None,
     ) -> None:
-        if llm is None and not model_name:
-            raise ValueError("Agent1PrimaryAnalyzer requires a model_name or a custom llm.")
-
         self.model_name = model_name
-        self.llm = llm or OpenAIResponsesLLM(model_name=model_name)
+        self.llm = llm or LocalQwenLLM(model_name=model_name)
 
     def run(
         self,
@@ -60,7 +57,7 @@ class Agent1PrimaryAnalyzer:
                 metadata={
                     "agent": "agent1",
                     "role": "primary_analyzer",
-                    "model": self.model_name or "",
+                    "model": self.model_name or getattr(self.llm, "model_name", ""),
                 },
                 response_model=Agent1CaseSummary,
             )
@@ -71,7 +68,7 @@ class Agent1PrimaryAnalyzer:
                 metadata={
                     "agent": "agent1",
                     "role": "primary_analyzer",
-                    "model": self.model_name or "",
+                    "model": self.model_name or getattr(self.llm, "model_name", ""),
                 },
                 response_model=Agent1CaseSummary,
             )

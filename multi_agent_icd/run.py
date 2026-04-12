@@ -6,7 +6,7 @@ from typing import Any
 
 from multi_agent_icd.agents.agent1 import Agent1PrimaryAnalyzer
 from multi_agent_icd.agents.agent2 import Agent2Coder
-from multi_agent_icd.agents.agent3 import Agent3Reviewer
+from multi_agent_icd.utils.clinical_text import build_evidence_index, normalize_clinical_text
 
 
 @dataclass
@@ -45,17 +45,16 @@ class MultiAgentController:
         self,
         agent1: Any | None = None,
         agent2: Any | None = None,
-        agent3: Any | None = None,
         agent_models: dict[str, str] | None = None,
         pipeline_order: list[str] | None = None,
     ) -> None:
         agent_models = agent_models or {}
         self.agents: dict[str, Any] = {
             "agent1": agent1 or Agent1PrimaryAnalyzer(model_name=agent_models.get("agent1")),
-            "agent2": agent2 or Agent2Coder(),
-            "agent3": agent3 or Agent3Reviewer(),
+            "agent2": agent2
+            or Agent2Coder(model_name=agent_models.get("agent2") or agent_models.get("agent1")),
         }
-        self.pipeline_order = pipeline_order or ["agent1", "agent2", "agent3"]
+        self.pipeline_order = pipeline_order or ["agent1", "agent2"]
 
     def register_agent(self, agent_name: str, agent: Any) -> None:
         self.agents[agent_name] = agent
@@ -72,10 +71,11 @@ class MultiAgentController:
         requested_agents = requested_agents or list(self.pipeline_order)
 
         state = PipelineState(
-            note_text=note_text,
+            note_text=normalize_clinical_text(note_text),
             patient_context=patient_context,
             requested_agents=requested_agents,
         )
+        state.shared_memory["note_evidence_index"] = build_evidence_index(state.note_text)
 
         for agent_name in self.pipeline_order:
             if agent_name not in requested_agents:
@@ -114,6 +114,7 @@ class MultiAgentController:
                 state.shared_memory["structured_case_summary"] = result
             else:
                 result = self._run_downstream_agent(agent, state)
+                state.shared_memory[f"{agent_name}_output"] = result
 
             state.agent_outputs[agent_name] = result
             state.final_output = result

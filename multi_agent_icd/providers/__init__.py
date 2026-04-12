@@ -1,3 +1,3 @@
-from .openai_responses import OpenAIResponsesLLM
+from .local_qwen import DEFAULT_QWEN_MODEL_NAME, LocalQwenLLM
 
-__all__ = ["OpenAIResponsesLLM"]
+__all__ = ["DEFAULT_QWEN_MODEL_NAME", "LocalQwenLLM"]
