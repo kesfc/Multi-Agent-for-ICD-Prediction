@@ -18,6 +18,33 @@ def _try_parse_json(value: Any) -> dict[str, Any]:
     return json.loads(value)
 
 
+def _coerce_agent2_result(value: dict[str, Any]) -> dict[str, Any]:
+    if any(
+        key in value
+        for key in ("principal_diagnosis", "secondary_diagnoses", "procedures", "coding_summary")
+    ):
+        return value
+    if "code" not in value:
+        return value
+    category = str(value.get("category", "")).strip().lower()
+    result = {
+        "principal_diagnosis": None,
+        "secondary_diagnoses": [],
+        "procedures": [],
+        "coding_queries": [
+            "Model returned a single code candidate instead of the full coding result schema.",
+        ],
+        "coding_summary": "Single code candidate was coerced into the expected Agent 2 result schema.",
+    }
+    if category == "procedure":
+        result["procedures"] = [value]
+    elif category == "secondary_diagnosis":
+        result["secondary_diagnoses"] = [value]
+    else:
+        result["principal_diagnosis"] = value
+    return result
+
+
 class Agent2Coder:
     def __init__(
         self,
@@ -48,6 +75,9 @@ class Agent2Coder:
             structured_case_summary=structured_case_summary,
             patient_context=patient_context,
             evidence_index=evidence_index,
+            candidate_code_set=patient_context.get("candidate_code_set"),
+            candidate_code_records=patient_context.get("candidate_code_records"),
+            candidate_output_limit=patient_context.get("candidate_output_limit"),
         )
 
         if hasattr(self.llm, "generate_json"):
@@ -75,9 +105,11 @@ class Agent2Coder:
         else:
             raise AttributeError("llm must expose generate_json(...) or generateJson(...).")
 
-        parsed = _try_parse_json(raw_result)
+        parsed = _coerce_agent2_result(_try_parse_json(raw_result))
         return normalize_agent2_output(
             parsed,
             diagnosis_code_system=diagnosis_code_system,
             procedure_code_system=procedure_code_system,
+            allowed_codes=patient_context.get("candidate_code_set"),
+            candidate_limit=patient_context.get("candidate_output_limit"),
         )

@@ -4,37 +4,23 @@ import json
 
 
 AGENT_1_JSON_TEMPLATE = {
-    "gender": "male",
-    "chief_complaint": "l2 fracture, back pain",
+    "gender": "<male|female|unknown>",
+    "chief_complaint": "<chief complaint from the current note>",
     "procedure": [
-        "l2 corpectomy retroperitoneal approach",
-        "revision of posterior l1-l3 fusion",
+        "<major procedure from the current note>",
     ],
-    "history_present_illness": "patient sustained an l2 fracture after jumping from a second-floor window and had persistent back pain despite conservative treatment.",
-    "past_medical_history": ["mitral valve prolapse", "headaches", "gerd"],
+    "history_present_illness": "<compact HPI summary supported only by the current note>",
+    "past_medical_history": ["<past medical history item from the current note>"],
     "physical_exam_discharge": [
-        "afebrile",
-        "vital signs stable",
-        "no apparent distress",
-        "back incision clean dry intact",
-        "strength and sensation intact",
+        "<discharge exam finding from the current note>",
     ],
     "pertinent_results": [
-        "abdominal x-ray large bowel dilation consistent with ileus",
-        "ultrasound negative for dvt",
-        "cta chest negative for pulmonary embolism",
-        "small pleural effusions and atelectasis",
-        "spine x-ray postsurgical changes with no acute fracture",
+        "<key imaging, lab, or study result from the current note>",
     ],
     "hospital_course": [
-        "underwent l2 corpectomy and posterior fusion revision",
-        "postoperative uncontrolled back pain requiring medication adjustment",
-        "large bowel ileus improved with bowel regimen",
-        "tachycardia workup negative for dvt and pe",
-        "transient oxygen desaturation during sleep requiring supplemental oxygen",
-        "new right-sided lumbar pain with stable repeat imaging",
+        "<hospital course event from the current note>",
     ],
-    "discharge_diagnosis": ["l2 fracture", "back pain"],
+    "discharge_diagnosis": ["<discharge diagnosis from the current note>"],
 }
 
 
@@ -51,7 +37,9 @@ def build_agent1_prompts(
             "You are Agent 1 in a multi-agent clinical coding system.",
             "Your job is to turn a raw discharge-style note into a compact structured JSON summary for downstream ICD coding.",
             "Return JSON only.",
+            "Your first character must be { and your final character must be }.",
             "Do not explain your reasoning.",
+            "Do not write a thinking process, analysis, markdown, or prose outside the JSON object.",
             "Do not predict ICD codes.",
             "Keep the output clinically faithful but concise.",
             "Preserve diagnosis, procedure, acuity, and complication cues that matter for coding.",
@@ -81,7 +69,9 @@ def build_agent1_prompts(
             "- history_present_illness should be a compact prose sentence or two.",
             "- Prefer normalized clinical phrases over full copied sentences.",
             "- Preserve laterality, acuity, complication, postoperative, and causal wording when supported.",
+            "- The JSON structure above contains placeholders only; do not copy placeholder text as final output.",
             "- Do not invent diagnoses or procedures that are not supported by the note.",
+            "- If a field is not documented in the current note, use an empty string for scalar fields or an empty array for list fields.",
         ]
     )
 

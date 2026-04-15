@@ -165,6 +165,27 @@ Or point at one explicit file:
 python -m multi_agent_icd.cli.run_testset --csv-path data/mimic4_icd10/test_full.csv --limit 10
 ```
 
+When `TOP_50_CODES.csv` exists next to the selected split, the testset runner automatically uses it as the allowed ICD candidate set for Agent 2. You can also pass it explicitly and control how many code candidates are emitted per note:
+
+`TOP_50_CODES.csv` may contain either one code per line or a richer two-column format:
+
+```csv
+code,description
+274.9,"Gout, unspecified"
+585.6,End stage renal disease
+584.9,"Acute kidney failure, unspecified"
+```
+
+The two-column format is recommended because Agent 2 uses the descriptions as the source of truth for each code's clinical meaning.
+
+```bash
+python -m multi_agent_icd.cli.run_testset \
+  --csv-path multi_agent_icd/datasets/mimic4_icd9/test_full.csv \
+  --top-codes-path multi_agent_icd/datasets/mimic4_icd9/TOP_50_CODES.csv \
+  --hadm-ids-path multi_agent_icd/datasets/mimic4_icd9/test_50_hadm_ids.csv \
+  --num-candidates 5
+```
+
 The command prints a summary JSON and writes per-case predictions to:
 
 ```text
@@ -176,10 +197,17 @@ Each JSONL row includes:
 - `subject_id`
 - `hadm_id`
 - `gold_labels`
-- `predicted_codes`
+- `top_code_gold_labels`
+- `predicted_codes` (an ordered list of ICD code candidates; with a top-code file, the runner fills this to `--num-candidates`, default 5)
+- `candidate_output_limit`
+- `top_codes_path`
 - `agent1_output`
 - `agent2_output`
 - `execution_trace`
+
+The summary JSON includes `precision_at_5` by default, computed as the mean per-case `hits_in_top_5 / 5`. When using a top-code candidate file, it also reports top-code label-space metrics such as `covered_examples`, `case_coverage`, `label_coverage`, `precision_at_5_covered`, and `recall_at_5_top_codes`.
+
+For the bundled ICD-9 top-50 task, use `test_50_hadm_ids.csv` to evaluate only admissions known to contain at least one top-50 gold label.
 
 ## Controller example
 

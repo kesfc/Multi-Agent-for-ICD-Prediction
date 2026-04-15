@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from multi_agent_icd import DEFAULT_QWEN_MODEL_NAME, MultiAgentController
-from multi_agent_icd.datasets import resolve_mimic_split_path
+from multi_agent_icd.datasets import resolve_mimic_split_path, resolve_top_codes_path
 from multi_agent_icd.testset import run_testset
 
 
@@ -48,6 +48,32 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_path",
         help="Optional JSONL file for per-example predictions.",
     )
+    parser.add_argument(
+        "--top-codes-path",
+        help=(
+            "Optional CSV containing allowed ICD code candidates. "
+            "Defaults to TOP_50_CODES.csv next to the selected split when present."
+        ),
+    )
+    parser.add_argument(
+        "--hadm-ids-path",
+        help=(
+            "Optional one-column CSV of HADM IDs to include. "
+            "Use this to run/evaluate only admissions containing top-code labels."
+        ),
+    )
+    parser.add_argument(
+        "--num-candidates",
+        "--candidate-output-limit",
+        dest="candidate_output_limit",
+        type=int,
+        default=5,
+        help=(
+            "Number of ranked ICD code candidates to output per example. "
+            "Defaults to 5 for P@5 evaluation. "
+            "--candidate-output-limit is kept as a backwards-compatible alias."
+        ),
+    )
     return parser
 
 
@@ -61,6 +87,7 @@ def main() -> None:
         if args.output_path
         else Path("outputs") / csv_path.parent.name / f"{csv_path.stem}_predictions.jsonl"
     )
+    top_codes_path = Path(args.top_codes_path) if args.top_codes_path else resolve_top_codes_path(csv_path)
 
     controller = MultiAgentController(
         agent_models={
@@ -74,6 +101,9 @@ def main() -> None:
         limit=args.limit,
         offset=args.offset,
         output_path=output_path,
+        top_codes_path=top_codes_path,
+        hadm_ids_path=Path(args.hadm_ids_path) if args.hadm_ids_path else None,
+        candidate_output_limit=args.candidate_output_limit,
     )
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 

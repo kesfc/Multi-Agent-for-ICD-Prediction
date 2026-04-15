@@ -19,6 +19,28 @@ def _normalize_phrase_list(value: Any) -> list[str]:
     return [_as_string(item).strip() for item in value if _as_string(item).strip()]
 
 
+def _normalize_allowed_codes(value: Any) -> set[str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return set()
+    return {_as_string(item).strip().upper() for item in value if _as_string(item).strip()}
+
+
+def _normalize_candidate_limit(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("candidate_limit must be a positive integer.")
+    try:
+        limit = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("candidate_limit must be a positive integer.") from exc
+    if limit <= 0:
+        raise ValueError("candidate_limit must be a positive integer.")
+    return limit
+
+
 def _normalize_code_candidate(
     value: Any,
     default_category: str,
@@ -97,27 +119,52 @@ def normalize_agent2_output(
     raw_output: dict[str, Any] | None,
     diagnosis_code_system: str = "ICD-10-CM",
     procedure_code_system: str = "ICD-10-PCS",
+    allowed_codes: list[str] | None = None,
+    candidate_limit: int | None = None,
 ) -> dict[str, Any]:
     raw = raw_output if isinstance(raw_output, dict) else {}
+    allowed_code_set = _normalize_allowed_codes(allowed_codes)
+    normalized_limit = _normalize_candidate_limit(candidate_limit)
+    remaining = normalized_limit
 
     principal = _normalize_code_candidate(
         raw.get("principal_diagnosis"),
         default_category="principal_diagnosis",
         default_code_system=diagnosis_code_system,
     )
+    if principal is not None and allowed_code_set is not None and principal["code"] not in allowed_code_set:
+        principal = None
+    if principal is not None and remaining is not None:
+        remaining -= 1
+
+    secondary_diagnoses = _normalize_code_candidate_list(
+        raw.get("secondary_diagnoses"),
+        default_category="secondary_diagnosis",
+        default_code_system=diagnosis_code_system,
+    )
+    procedures = _normalize_code_candidate_list(
+        raw.get("procedures"),
+        default_category="procedure",
+        default_code_system=procedure_code_system,
+    )
+
+    def filter_and_cap(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        nonlocal remaining
+        filtered: list[dict[str, Any]] = []
+        for candidate in candidates:
+            if allowed_code_set is not None and candidate["code"] not in allowed_code_set:
+                continue
+            if remaining is not None and remaining <= 0:
+                break
+            filtered.append(candidate)
+            if remaining is not None:
+                remaining -= 1
+        return filtered
 
     return {
         "principal_diagnosis": principal,
-        "secondary_diagnoses": _normalize_code_candidate_list(
-            raw.get("secondary_diagnoses"),
-            default_category="secondary_diagnosis",
-            default_code_system=diagnosis_code_system,
-        ),
-        "procedures": _normalize_code_candidate_list(
-            raw.get("procedures"),
-            default_category="procedure",
-            default_code_system=procedure_code_system,
-        ),
+        "secondary_diagnoses": filter_and_cap(secondary_diagnoses),
+        "procedures": filter_and_cap(procedures),
         "coding_queries": _normalize_phrase_list(raw.get("coding_queries")),
         "coding_summary": _as_string(raw.get("coding_summary")).strip(),
     }

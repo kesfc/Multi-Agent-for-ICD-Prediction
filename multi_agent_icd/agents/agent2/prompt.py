@@ -15,86 +15,84 @@ def _build_agent2_json_template(coding_version: str) -> dict:
     if coding_version == "ICD-9":
         return {
             "principal_diagnosis": {
-                "code": "486",
-                "description": "pneumonia, organism unspecified",
+                "code": "<supported ICD-9-CM code from allowed candidates>",
+                "description": "<short description of the supported diagnosis>",
                 "code_system": "ICD-9-CM",
                 "category": "principal_diagnosis",
-                "confidence": "medium",
-                "rationale": "Discharge diagnosis supports pneumonia as the main treated condition.",
-                "evidence_ids": ["E3", "E18"],
+                "confidence": "high|medium|low",
+                "rationale": "<brief evidence-grounded reason this diagnosis is supported>",
+                "evidence_ids": ["E1"],
                 "missing_details": [],
             },
             "secondary_diagnoses": [
                 {
-                    "code": "401.9",
-                    "description": "unspecified essential hypertension",
+                    "code": "<supported ICD-9-CM code from allowed candidates>",
+                    "description": "<short description of the supported secondary diagnosis>",
                     "code_system": "ICD-9-CM",
                     "category": "secondary_diagnosis",
-                    "confidence": "high",
-                    "rationale": "Hypertension is documented in the note history and medication list.",
-                    "evidence_ids": ["E8"],
+                    "confidence": "high|medium|low",
+                    "rationale": "<brief evidence-grounded reason this diagnosis is supported>",
+                    "evidence_ids": ["E2"],
                     "missing_details": [],
                 }
             ],
             "procedures": [
                 {
-                    "code": "96.04",
-                    "description": "insertion of endotracheal tube",
+                    "code": "<supported ICD-9-CM procedure code from allowed candidates>",
+                    "description": "<short description of the supported procedure>",
                     "code_system": "ICD-9-CM",
                     "category": "procedure",
-                    "confidence": "low",
-                    "rationale": "Use only when the note clearly documents the procedure during the encounter.",
-                    "evidence_ids": ["E10"],
-                    "missing_details": ["confirm the exact inpatient procedure documented in the chart"],
+                    "confidence": "high|medium|low",
+                    "rationale": "<brief evidence-grounded reason this procedure is supported>",
+                    "evidence_ids": ["E3"],
+                    "missing_details": ["<specific missing detail if needed>"],
                 }
             ],
             "coding_queries": [
-                "Clarify any missing diagnosis specificity before final code assignment.",
-                "Confirm whether any inpatient procedures should be coded from this note.",
+                "<specific missing documentation question if needed>",
             ],
-            "coding_summary": "Return only the best-supported ICD-9-CM diagnosis and procedure candidates."
+            "coding_summary": "<short summary of the selected ICD-9-CM candidates>"
         }
 
     return {
         "principal_diagnosis": {
-            "code": "S32.029A",
-            "description": "fracture of second lumbar vertebra, initial encounter for closed fracture",
+            "code": "<supported ICD-10-CM code from allowed candidates>",
+            "description": "<short description of the supported diagnosis>",
             "code_system": "ICD-10-CM",
             "category": "principal_diagnosis",
-            "confidence": "medium",
-            "rationale": "Discharge diagnosis and hospital course support an acute L2 fracture treated during this encounter.",
-            "evidence_ids": ["E3", "E18"],
-            "missing_details": ["confirm whether the fracture was documented as closed or open if not explicit"],
+            "confidence": "high|medium|low",
+            "rationale": "<brief evidence-grounded reason this diagnosis is supported>",
+            "evidence_ids": ["E1"],
+            "missing_details": ["<specific missing detail if needed>"],
         },
         "secondary_diagnoses": [
             {
-                "code": "K56.7",
-                "description": "ileus, unspecified",
+                "code": "<supported ICD-10-CM code from allowed candidates>",
+                "description": "<short description of the supported secondary diagnosis>",
                 "code_system": "ICD-10-CM",
                 "category": "secondary_diagnosis",
-                "confidence": "high",
-                "rationale": "The hospital course documents postoperative ileus that required treatment.",
-                "evidence_ids": ["E22", "E24"],
+                "confidence": "high|medium|low",
+                "rationale": "<brief evidence-grounded reason this diagnosis is supported>",
+                "evidence_ids": ["E2"],
                 "missing_details": [],
             }
         ],
         "procedures": [
             {
-                "code": "0RGA0K1",
-                "description": "fusion of lumbar vertebral joint with internal fixation device, open approach",
+                "code": "<supported ICD-10-PCS code from allowed candidates>",
+                "description": "<short description of the supported procedure>",
                 "code_system": "ICD-10-PCS",
                 "category": "procedure",
-                "confidence": "low",
-                "rationale": "The note documents lumbar fusion revision but may not contain enough PCS detail for a final code.",
-                "evidence_ids": ["E10"],
-                "missing_details": ["confirm device, exact body part, and whether additional corpectomy PCS codes are required"],
+                "confidence": "high|medium|low",
+                "rationale": "<brief evidence-grounded reason this procedure is supported>",
+                "evidence_ids": ["E3"],
+                "missing_details": ["<specific missing detail if needed>"],
             }
         ],
         "coding_queries": [
-            "Clarify encounter specificity and fracture details if a more specific 7th character is available.",
-            "Confirm the exact ICD-10-PCS procedure components for the corpectomy and fusion revision.",
+            "<specific missing documentation question if needed>",
         ],
-        "coding_summary": "Primary focus is acute L2 fracture with treated postoperative complications and major lumbar surgery."
+        "coding_summary": "<short summary of the selected ICD-10 candidates>"
     }
 
 
@@ -102,9 +100,14 @@ def build_agent2_prompts(
     structured_case_summary: dict,
     patient_context: dict | None = None,
     evidence_index: list[dict] | None = None,
+    candidate_code_set: list[str] | None = None,
+    candidate_code_records: list[dict] | None = None,
+    candidate_output_limit: int | None = None,
 ) -> dict[str, str]:
     patient_context = patient_context or {}
     evidence_index = evidence_index or []
+    candidate_code_set = candidate_code_set or []
+    candidate_code_records = candidate_code_records or []
     coding_version, diagnosis_code_system, procedure_code_system = resolve_agent2_code_systems(patient_context)
     json_template = _build_agent2_json_template(coding_version)
 
@@ -113,12 +116,52 @@ def build_agent2_prompts(
             "You are Agent 2 in a multi-agent ICD coding system.",
             "Your job is to convert a structured clinical case summary into grounded ICD code candidates.",
             "Return JSON only.",
+            "Your first character must be { and your final character must be }.",
             "Do not explain your chain-of-thought.",
+            "Do not write a thinking process, analysis, markdown, or prose outside the JSON object.",
             "Be conservative and evidence-based.",
             "If documentation is incomplete, choose the best supported code candidate and record the missing details explicitly.",
+            "When a candidate code set is provided, only choose codes from that set.",
             "Use evidence_ids from the provided evidence index whenever possible.",
         ]
     )
+
+    candidate_rules = []
+    if candidate_code_records:
+        candidate_rules.extend(
+            [
+                "",
+                "Allowed ICD code candidates with descriptions:",
+                json.dumps(candidate_code_records, indent=2, ensure_ascii=False),
+                "",
+                "Candidate-set rules:",
+                "- Choose code values only from the allowed ICD code candidates above.",
+                "- Use the provided description as the source of truth for each code's clinical meaning.",
+                "- Return a ranked candidate list, ordered from most likely to least likely.",
+                "- Do not change the clinical meaning of an allowed code to fit the note.",
+                "- The output description should match or faithfully summarize the provided candidate description.",
+                "- If a clinically supported condition is not represented in the allowed candidates, mention the gap in coding_queries.",
+                "- Still fill the requested ranked list from the allowed candidates; mark weak lower-ranked candidates as low confidence.",
+            ]
+        )
+    elif candidate_code_set:
+        candidate_rules.extend(
+            [
+                "",
+                "Allowed ICD code candidates:",
+                json.dumps(candidate_code_set, indent=2, ensure_ascii=False),
+                "",
+                "Candidate-set rules:",
+                "- Choose code values only from the allowed ICD code candidates above.",
+                "- Return a ranked candidate list, ordered from most likely to least likely.",
+                "- Do not change the clinical meaning of an allowed code to fit the note.",
+                "- The description must describe the ICD code itself, not just restate the patient's symptom or diagnosis.",
+                "- If a clinically supported condition is not represented in the allowed candidates, mention the gap in coding_queries.",
+                "- Still fill the requested ranked list from the allowed candidates; mark weak lower-ranked candidates as low confidence.",
+            ]
+        )
+    if candidate_output_limit is not None:
+        candidate_rules.append(f"- Return exactly {candidate_output_limit} total code candidates across principal_diagnosis, secondary_diagnoses, and procedures when the allowed candidate set contains at least {candidate_output_limit} codes.")
 
     user_prompt = "\n".join(
         [
@@ -133,18 +176,22 @@ def build_agent2_prompts(
             "",
             "Evidence index from the raw note:",
             json.dumps(evidence_index, indent=2, ensure_ascii=False),
+            *candidate_rules,
             "",
             "Return JSON that matches this structure closely:",
             json.dumps(json_template, indent=2, ensure_ascii=False),
             "",
             "Formatting rules:",
+            "- The JSON structure above contains placeholders only; do not copy placeholder text as final output.",
             "- principal_diagnosis should be either one code candidate object or null when unsupported.",
-            "- secondary_diagnoses and procedures should contain only materially supported items.",
+            "- Put the highest-ranked diagnosis candidate in principal_diagnosis when one is supportable.",
+            "- Put the remaining ranked diagnosis candidates in secondary_diagnoses; use procedures only for true procedure codes documented in the note.",
             f"- code_system should be {diagnosis_code_system} for diagnoses and {procedure_code_system} for procedures.",
             "- confidence should be high, medium, or low.",
             "- rationale should be short and evidence-grounded.",
             "- missing_details should list the exact documentation gaps that limit specificity.",
             "- Do not invent unsupported diagnoses, complications, or procedures.",
+            "- Do not assign an allowed code unless both the code meaning and note evidence support it.",
         ]
     )
 

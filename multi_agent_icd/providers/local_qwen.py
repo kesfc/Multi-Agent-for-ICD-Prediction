@@ -129,10 +129,13 @@ class LocalQwenLLM:
         }
         try:
             signature = inspect.signature(apply_chat_template)
-            if "enable_thinking" in signature.parameters:
+            if "enable_thinking" in signature.parameters or any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
+            ):
                 template_kwargs["enable_thinking"] = self.enable_thinking
         except (TypeError, ValueError):
-            pass
+            template_kwargs["enable_thinking"] = self.enable_thinking
 
         try:
             return apply_chat_template(messages, **template_kwargs)
