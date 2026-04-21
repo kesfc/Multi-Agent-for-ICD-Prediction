@@ -1,0 +1,111 @@
+data:
+  train_files: ../outputs/easyr1/icd_rl/train.jsonl
+  val_files: ../outputs/easyr1/icd_rl/val.jsonl
+  prompt_key: prompt
+  answer_key: answer
+  image_key: images
+  video_key: videos
+  image_dir: null
+  video_fps: 2.0
+  max_prompt_length: 4096
+  max_response_length: 256
+  rollout_batch_size: 64
+  mini_rollout_batch_size: 16
+  val_batch_size: 64
+  format_prompt: null
+  override_chat_template: null
+  shuffle: true
+  seed: 1
+  min_pixels: null
+  max_pixels: null
+  filter_overlong_prompts: true
+
+algorithm:
+  adv_estimator: grpo
+  disable_kl: false
+  use_kl_loss: true
+  kl_penalty: low_var_kl
+  kl_coef: 1.0e-2
+  online_filtering: false
+  filter_key: overall
+  filter_low: 0.01
+  filter_high: 0.99
+
+worker:
+  actor:
+    global_batch_size: 32
+    micro_batch_size_per_device_for_update: 1
+    micro_batch_size_per_device_for_experience: 1
+    max_grad_norm: 1.0
+    padding_free: true
+    dynamic_batching: true
+    ulysses_size: 1
+    model:
+      model_path: Qwen/Qwen2.5-1.5B-Instruct
+      enable_gradient_checkpointing: true
+      trust_remote_code: false
+      freeze_vision_tower: false
+      lora:
+        rank: 32
+        alpha: 64
+        target_modules: all-linear
+        exclude_modules: null
+    optim:
+      lr: 1.0e-5
+      weight_decay: 1.0e-2
+      strategy: adamw
+      lr_warmup_ratio: 0.03
+    fsdp:
+      enable_full_shard: true
+      enable_cpu_offload: false
+      enable_rank0_init: true
+    offload:
+      offload_params: false
+      offload_optimizer: true
+
+  rollout:
+    n: 4
+    temperature: 0.8
+    top_p: 0.95
+    limit_images: 0
+    gpu_memory_utilization: 0.55
+    enforce_eager: false
+    enable_chunked_prefill: false
+    tensor_parallel_size: 1
+    disable_tqdm: false
+    val_override_config:
+      temperature: 0.0
+      top_p: 1.0
+      n: 1
+
+  ref:
+    fsdp:
+      enable_full_shard: true
+      enable_cpu_offload: true
+      enable_rank0_init: true
+    offload:
+      offload_params: true
+
+  reward:
+    reward_function: ./examples/reward_function/icd_f1.py:compute_score
+    num_cpus: 4
+
+trainer:
+  total_epochs: 3
+  max_steps: null
+  project_name: easy_r1
+  experiment_name: qwen2_5_1_5b_icd_f1_grpo
+  logger: ["console", "file"]
+  nnodes: 1
+  n_gpus_per_node: 1
+  max_try_make_batch: 20
+  val_freq: 50
+  val_before_train: true
+  val_only: false
+  val_generations_to_log: 8
+  save_freq: 50
+  save_limit: 2
+  save_model_only: true
+  save_checkpoint_path: ../checkpoints/easy_r1/icd_f1
+  load_checkpoint_path: null
+  find_last_checkpoint: true

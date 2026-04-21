@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+.tmp_test/
+outputs/
+
+multi_agent_icd/datasets/mimiciii_50/
+multi_agent_icd/datasets/mimiciii_clean/
+multi_agent_icd/datasets/mimiciv_icd9/
+multi_agent_icd/datasets/mimiciv_icd10/
