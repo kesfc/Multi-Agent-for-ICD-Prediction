@@ -5,6 +5,7 @@ from typing import Any
 
 from multi_agent_icd.agents.agent2.prompt import build_agent2_prompts, resolve_agent2_code_systems
 from multi_agent_icd.agents.agent2.schema import Agent2CodingResult
+from multi_agent_icd.knowledge_base import KnowledgeBase
 from multi_agent_icd.providers import LocalQwenLLM
 from multi_agent_icd.utils.clinical_text import build_evidence_index, normalize_clinical_text
 from multi_agent_icd.utils.schema import normalize_agent2_output
@@ -45,6 +46,20 @@ def _coerce_agent2_result(value: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _normalize_knowledge_top_k(value: Any, default: int = 3) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        raise ValueError("knowledge_base_top_k must be a positive integer.")
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("knowledge_base_top_k must be a positive integer.") from exc
+    if normalized <= 0:
+        raise ValueError("knowledge_base_top_k must be a positive integer.")
+    return normalized
+
+
 class Agent2Coder:
     def __init__(
         self,
@@ -71,10 +86,30 @@ class Agent2Coder:
         if not isinstance(evidence_index, list):
             evidence_index = build_evidence_index(note_text)
 
+        retrieved_knowledge: list[dict[str, Any]] = []
+        knowledge_base_path = (
+            shared_memory.get("knowledge_base_path") or patient_context.get("knowledge_base_path")
+        )
+        if knowledge_base_path:
+            knowledge_base = KnowledgeBase(knowledge_base_path)
+            retrieved_knowledge = knowledge_base.search(
+                note_text=note_text,
+                structured_case_summary=structured_case_summary,
+                coding_version=patient_context.get("coding_version"),
+                top_k=_normalize_knowledge_top_k(
+                    shared_memory.get("knowledge_base_top_k")
+                    or patient_context.get("knowledge_base_top_k")
+                    or 3
+                ),
+            )
+            if hasattr(state, "shared_memory"):
+                state.shared_memory["agent2_retrieved_knowledge"] = retrieved_knowledge
+
         prompts = build_agent2_prompts(
             structured_case_summary=structured_case_summary,
             patient_context=patient_context,
             evidence_index=evidence_index,
+            retrieved_knowledge=retrieved_knowledge,
             candidate_code_set=patient_context.get("candidate_code_set"),
             candidate_code_records=patient_context.get("candidate_code_records"),
             candidate_output_limit=patient_context.get("candidate_output_limit"),

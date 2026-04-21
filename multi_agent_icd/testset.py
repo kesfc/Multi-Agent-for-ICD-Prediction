@@ -41,6 +41,8 @@ class TestSetSummary:
     hadm_ids_path: str | None = None
     hadm_id_filter_count: int = 0
     output_path: str | None = None
+    knowledge_base_path: str | None = None
+    knowledge_entries_written: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         precision_at_k_all = _safe_divide(self.precision_at_k_total, self.num_examples)
@@ -80,6 +82,8 @@ class TestSetSummary:
             "top_codes_path": self.top_codes_path,
             "hadm_ids_path": self.hadm_ids_path,
             "output_path": self.output_path,
+            "knowledge_base_path": self.knowledge_base_path,
+            "knowledge_entries_written": self.knowledge_entries_written,
         }
 
 
@@ -170,6 +174,7 @@ def _build_output_record(
         "text_length": example.length,
         "agent1_output": state.get("agent_outputs", {}).get("agent1"),
         "agent2_output": state.get("agent_outputs", {}).get("agent2"),
+        "agent3_output": state.get("agent_outputs", {}).get("agent3"),
         "execution_trace": state.get("execution_trace", []),
     }
 
@@ -197,20 +202,22 @@ def _build_failed_output_record(
         "error": error_message,
         "agent1_output": state.get("agent_outputs", {}).get("agent1") if isinstance(state, dict) else None,
         "agent2_output": state.get("agent_outputs", {}).get("agent2") if isinstance(state, dict) else None,
+        "agent3_output": state.get("agent_outputs", {}).get("agent3") if isinstance(state, dict) else None,
         "execution_trace": state.get("execution_trace", []) if isinstance(state, dict) else [],
     }
 
 
-def _validate_two_agent_state(state: dict[str, Any]) -> None:
+def _validate_required_state(state: dict[str, Any], required_agents: list[str] | tuple[str, ...]) -> None:
     agent_outputs = state.get("agent_outputs", {})
-    missing = [agent_name for agent_name in ("agent1", "agent2") if agent_name not in agent_outputs]
+    required_agents = list(required_agents)
+    missing = [agent_name for agent_name in required_agents if agent_name not in agent_outputs]
     if missing:
         raise RuntimeError(f"Pipeline did not produce required agent output(s): {', '.join(missing)}")
 
     failed: list[str] = []
     for item in state.get("execution_trace", []):
         agent_name = item.get("agent_name", "")
-        if agent_name not in {"agent1", "agent2"} or item.get("status") == "completed":
+        if agent_name not in set(required_agents) or item.get("status") == "completed":
             continue
         trace_message = str(item.get("message", "")).strip()
         output_message = ""
@@ -223,21 +230,60 @@ def _validate_two_agent_state(state: dict[str, Any]) -> None:
         raise RuntimeError(f"Required agent(s) did not complete successfully: {'; '.join(failed)}")
 
 
+def _run_controller(
+    controller: Any,
+    *,
+    note_text: str,
+    patient_context: dict[str, Any],
+    requested_agents: list[str],
+    training_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if training_context is None:
+        return controller.run(
+            note_text=note_text,
+            patient_context=patient_context,
+            requested_agents=requested_agents,
+        )
+
+    try:
+        return controller.run(
+            note_text=note_text,
+            patient_context=patient_context,
+            training_context=training_context,
+            requested_agents=requested_agents,
+        )
+    except TypeError as exc:
+        raise TypeError(
+            "Controller.run must accept training_context when update_knowledge_base=True."
+        ) from exc
+
+
 def run_testset(
     csv_path: str | Path,
     controller: MultiAgentController,
+    split: str | None = None,
     limit: int | None = None,
     offset: int = 0,
     output_path: str | Path | None = None,
     top_codes_path: str | Path | None = None,
     hadm_ids_path: str | Path | None = None,
     candidate_output_limit: int = 5,
+    knowledge_base_path: str | Path | None = None,
+    knowledge_base_top_k: int = 3,
+    update_knowledge_base: bool = False,
     continue_on_error: bool = True,
 ) -> dict[str, Any]:
     dataset_path = Path(csv_path)
     coding_version = infer_coding_version_from_path(dataset_path)
     output_file = Path(output_path) if output_path else None
     normalized_candidate_output_limit = _validate_candidate_output_limit(candidate_output_limit)
+    knowledge_base_file = Path(knowledge_base_path) if knowledge_base_path is not None else None
+    if update_knowledge_base and knowledge_base_file is None:
+        knowledge_base_file = (
+            output_file.with_name(f"{dataset_path.stem}_knowledge_base.sqlite3")
+            if output_file is not None
+            else Path("outputs") / dataset_path.parent.name / f"{dataset_path.stem}_knowledge_base.sqlite3"
+        )
     top_code_file = Path(top_codes_path) if top_codes_path is not None else resolve_top_codes_path(dataset_path)
     candidate_code_records = load_code_candidate_records(top_code_file) if top_code_file is not None else []
     candidate_code_set = [record["code"] for record in candidate_code_records]
@@ -265,10 +311,11 @@ def run_testset(
     top_code_gold_codes = 0
     skipped_by_hadm_filter = 0
     filtered_seen = 0
+    knowledge_entries_written = 0
 
     writer = output_file.open("w", encoding="utf-8") if output_file is not None else None
     try:
-        for example in iter_mimic_examples(dataset_path):
+        for example in iter_mimic_examples(dataset_path, split=split):
             if hadm_id_filter is not None and example.hadm_id not in hadm_id_filter:
                 skipped_by_hadm_filter += 1
                 continue
@@ -282,6 +329,9 @@ def run_testset(
             total_examples += 1
             patient_context = example.to_patient_context(coding_version=coding_version)
             patient_context["candidate_output_limit"] = normalized_candidate_output_limit
+            if knowledge_base_file is not None:
+                patient_context["knowledge_base_path"] = str(knowledge_base_file)
+                patient_context["knowledge_base_top_k"] = knowledge_base_top_k
             if candidate_code_set:
                 patient_context["candidate_code_set"] = candidate_code_set
                 patient_context["candidate_code_records"] = candidate_code_records
@@ -289,13 +339,27 @@ def run_testset(
             gold_set = set(example.labels)
             top_code_gold_set = gold_set & candidate_code_lookup if candidate_code_lookup else gold_set
             top_code_gold_labels = [code for code in example.labels if code in top_code_gold_set]
+            requested_agents = ["agent1", "agent2"]
+            training_context = None
+            if update_knowledge_base:
+                requested_agents.append("agent3")
+                training_context = {
+                    "gold_labels": example.labels,
+                    "knowledge_base_path": str(knowledge_base_file) if knowledge_base_file is not None else None,
+                    "subject_id": example.subject_id,
+                    "hadm_id": example.hadm_id,
+                }
             try:
-                state = controller.run(
+                state = _run_controller(
+                    controller,
                     note_text=example.text,
                     patient_context=patient_context,
-                    requested_agents=["agent1", "agent2"],
+                    requested_agents=requested_agents,
+                    training_context=training_context,
                 )
-                _validate_two_agent_state(state)
+                _validate_required_state(state, required_agents=("agent1", "agent2"))
+                if update_knowledge_base:
+                    _validate_required_state(state, required_agents=("agent3",))
             except Exception as exc:
                 if not continue_on_error:
                     raise
@@ -366,6 +430,11 @@ def run_testset(
                     )
                 )
                 writer.write("\n")
+
+            if update_knowledge_base:
+                agent3_output = state.get("agent_outputs", {}).get("agent3")
+                if isinstance(agent3_output, dict) and agent3_output.get("stored"):
+                    knowledge_entries_written += 1
     finally:
         if writer is not None:
             writer.close()
@@ -399,5 +468,7 @@ def run_testset(
         hadm_ids_path=str(hadm_id_file) if hadm_id_file is not None else None,
         hadm_id_filter_count=len(hadm_id_filter) if hadm_id_filter is not None else 0,
         output_path=str(output_file) if output_file is not None else None,
+        knowledge_base_path=str(knowledge_base_file) if knowledge_base_file is not None else None,
+        knowledge_entries_written=knowledge_entries_written,
     )
     return summary.to_dict()

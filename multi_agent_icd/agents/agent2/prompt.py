@@ -100,12 +100,14 @@ def build_agent2_prompts(
     structured_case_summary: dict,
     patient_context: dict | None = None,
     evidence_index: list[dict] | None = None,
+    retrieved_knowledge: list[dict] | None = None,
     candidate_code_set: list[str] | None = None,
     candidate_code_records: list[dict] | None = None,
     candidate_output_limit: int | None = None,
 ) -> dict[str, str]:
     patient_context = patient_context or {}
     evidence_index = evidence_index or []
+    retrieved_knowledge = retrieved_knowledge or []
     candidate_code_set = candidate_code_set or []
     candidate_code_records = candidate_code_records or []
     coding_version, diagnosis_code_system, procedure_code_system = resolve_agent2_code_systems(patient_context)
@@ -123,6 +125,7 @@ def build_agent2_prompts(
             "If documentation is incomplete, choose the best supported code candidate and record the missing details explicitly.",
             "When a candidate code set is provided, only choose codes from that set.",
             "Use evidence_ids from the provided evidence index whenever possible.",
+            "Retrieved knowledge base memories are advisory only and must never override the current note evidence or candidate constraints.",
         ]
     )
 
@@ -163,6 +166,22 @@ def build_agent2_prompts(
     if candidate_output_limit is not None:
         candidate_rules.append(f"- Return exactly {candidate_output_limit} total code candidates across principal_diagnosis, secondary_diagnoses, and procedures when the allowed candidate set contains at least {candidate_output_limit} codes.")
 
+    knowledge_section: list[str] = []
+    if retrieved_knowledge:
+        knowledge_section.extend(
+            [
+                "",
+                "Retrieved knowledge base memories from prior reviewed cases:",
+                json.dumps(retrieved_knowledge, indent=2, ensure_ascii=False),
+                "",
+                "Knowledge-memory rules:",
+                "- Use these memories only as supportive heuristics.",
+                "- The current note evidence and allowed candidate list remain the source of truth.",
+                "- Do not copy a prior code just because it appears in memory.",
+                "- When a memory is relevant, use it to notice patterns or documentation cues that should be checked in the current note.",
+            ]
+        )
+
     user_prompt = "\n".join(
         [
             "Patient context:",
@@ -176,6 +195,7 @@ def build_agent2_prompts(
             "",
             "Evidence index from the raw note:",
             json.dumps(evidence_index, indent=2, ensure_ascii=False),
+            *knowledge_section,
             *candidate_rules,
             "",
             "Return JSON that matches this structure closely:",

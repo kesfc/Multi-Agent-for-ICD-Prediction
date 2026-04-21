@@ -10,11 +10,16 @@ from multi_agent_icd.testset import run_testset
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the multi-agent ICD pipeline on a MIMIC-style test split.")
+    parser = argparse.ArgumentParser(
+        description="Run the multi-agent ICD pipeline on a MIMIC-style CSV or feather-backed split."
+    )
     parser.add_argument(
         "--dataset-dir",
         default="data/mimic4_icd10",
-        help="Directory containing train_full.csv, dev_full.csv, and test_full.csv.",
+        help=(
+            "Directory containing train_full.csv/dev_full.csv/test_full.csv, "
+            "or a feather dataset directory with a base table plus split metadata."
+        ),
     )
     parser.add_argument(
         "--split",
@@ -24,7 +29,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--csv-path",
-        help="Optional explicit CSV path. Overrides --dataset-dir and --split.",
+        help=(
+            "Optional explicit dataset path. Accepts CSV, feather, or a dataset directory. "
+            "Overrides --dataset-dir."
+        ),
     )
     parser.add_argument(
         "--limit",
@@ -74,6 +82,21 @@ def build_parser() -> argparse.ArgumentParser:
             "--candidate-output-limit is kept as a backwards-compatible alias."
         ),
     )
+    parser.add_argument(
+        "--knowledge-base-path",
+        help="Optional SQLite knowledge base path. Agent 2 retrieves from it when provided.",
+    )
+    parser.add_argument(
+        "--knowledge-base-top-k",
+        type=int,
+        default=3,
+        help="How many retrieved memory entries Agent 2 should inject into its prompt.",
+    )
+    parser.add_argument(
+        "--update-knowledge-base",
+        action="store_true",
+        help="Run Agent 3 after Agent 2 and write training memories into the knowledge base.",
+    )
     return parser
 
 
@@ -93,17 +116,24 @@ def main() -> None:
         agent_models={
             "agent1": args.model_name,
             "agent2": args.model_name,
-        }
+            "agent3": args.model_name,
+        },
+        knowledge_base_path=args.knowledge_base_path,
+        knowledge_retrieval_limit=args.knowledge_base_top_k,
     )
     summary = run_testset(
         csv_path=csv_path,
         controller=controller,
+        split=args.split,
         limit=args.limit,
         offset=args.offset,
         output_path=output_path,
         top_codes_path=top_codes_path,
         hadm_ids_path=Path(args.hadm_ids_path) if args.hadm_ids_path else None,
         candidate_output_limit=args.candidate_output_limit,
+        knowledge_base_path=Path(args.knowledge_base_path) if args.knowledge_base_path else None,
+        knowledge_base_top_k=args.knowledge_base_top_k,
+        update_knowledge_base=args.update_knowledge_base,
     )
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 

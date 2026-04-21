@@ -168,3 +168,23 @@ def normalize_agent2_output(
         "coding_queries": _normalize_phrase_list(raw.get("coding_queries")),
         "coding_summary": _as_string(raw.get("coding_summary")).strip(),
     }
+
+
+def normalize_agent3_output(raw_output: dict[str, Any] | None) -> dict[str, Any]:
+    raw = raw_output if isinstance(raw_output, dict) else {}
+    coding_lessons = _normalize_phrase_list(raw.get("coding_lessons"))
+    knowledge_summary = _as_string(raw.get("knowledge_summary")).strip()
+
+    if not knowledge_summary and coding_lessons:
+        knowledge_summary = coding_lessons[0]
+
+    return {
+        "case_summary": _as_string(raw.get("case_summary")).strip(),
+        "salient_clinical_patterns": _normalize_phrase_list(raw.get("salient_clinical_patterns")),
+        "correct_prediction_reasons": _normalize_phrase_list(raw.get("correct_prediction_reasons")),
+        "missed_code_lessons": _normalize_phrase_list(raw.get("missed_code_lessons")),
+        "unsupported_prediction_lessons": _normalize_phrase_list(raw.get("unsupported_prediction_lessons")),
+        "coding_lessons": coding_lessons,
+        "retrieval_queries": _normalize_phrase_list(raw.get("retrieval_queries")),
+        "knowledge_summary": knowledge_summary,
+    }

@@ -8,14 +8,18 @@ from .datasets import (
 )
 from .agents.agent1 import Agent1PrimaryAnalyzer, run_agent1
 from .agents.agent2 import Agent2Coder
+from .agents.agent3 import Agent3KnowledgeSynthesizer
 from .providers import DEFAULT_QWEN_MODEL_NAME, LocalQwenLLM
 from .run import MultiAgentController, PipelineState
 from .testset import extract_predicted_codes, run_testset
+from .knowledge_base import KnowledgeBase
 
 __all__ = [
     "Agent1PrimaryAnalyzer",
     "Agent2Coder",
+    "Agent3KnowledgeSynthesizer",
     "DEFAULT_QWEN_MODEL_NAME",
+    "KnowledgeBase",
     "MIMICNoteExample",
     "LocalQwenLLM",
     "MultiAgentController",
