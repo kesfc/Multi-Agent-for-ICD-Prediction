@@ -171,6 +171,81 @@ def build_evidence_index(note_text: str) -> list[dict[str, Any]]:
     return evidence_index
 
 
+def compact_evidence_index_for_prompt(evidence_index: list[dict[str, Any]] | None) -> list[dict[str, str]]:
+    compacted: list[dict[str, str]] = []
+    if not isinstance(evidence_index, list):
+        return compacted
+
+    min_chunk_chars = 90
+    max_chunk_chars = 240
+    current_id = ""
+    current_section = ""
+    current_texts: list[str] = []
+
+    def normalize_prompt_text(value: Any) -> str:
+        text = normalize_clinical_text(str(value or ""))
+        text = re.sub(r"\[\*\*.*?\*\*\]", " ", text)
+        text = re.sub(r"^[\-\u2022*]+\s*", "", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    def is_low_signal_prompt_text(text: str) -> bool:
+        if not text:
+            return True
+        if re.fullmatch(r"[\W\d_]+", text):
+            return True
+        words = re.findall(r"[A-Za-z]+", text)
+        if len(words) < 2 and len(text) < 8:
+            return True
+        return False
+
+    def flush() -> None:
+        nonlocal current_id, current_section, current_texts
+        if current_id and current_texts:
+            compacted.append(
+                {
+                    "id": current_id,
+                    "text": " ".join(current_texts).strip(),
+                }
+            )
+        current_id = ""
+        current_section = ""
+        current_texts = []
+
+    for item in evidence_index:
+        if not isinstance(item, dict):
+            continue
+        evidence_id = str(item.get("id", "")).strip()
+        section = str(item.get("section", "")).strip().lower()
+        text = normalize_prompt_text(item.get("text", ""))
+        if not evidence_id or is_low_signal_prompt_text(text):
+            continue
+
+        if not current_texts:
+            current_id = evidence_id
+            current_section = section
+            current_texts = [text]
+            continue
+
+        merged_text = " ".join(current_texts + [text]).strip()
+        should_merge = (
+            section == current_section
+            and len(merged_text) <= max_chunk_chars
+            and len(" ".join(current_texts).strip()) < min_chunk_chars
+        )
+        if should_merge:
+            current_texts.append(text)
+            continue
+
+        flush()
+        current_id = evidence_id
+        current_section = section
+        current_texts = [text]
+
+    flush()
+    return compacted
+
+
 def extract_patient_snapshot(note_text: str, patient_context: dict | None = None) -> dict[str, str | None]:
     normalized = normalize_clinical_text(note_text)
     context = patient_context or {}

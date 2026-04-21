@@ -4,8 +4,11 @@ __pycache__/
 
 .tmp_test/
 outputs/
+.vendor_gpu_py310/
 
 multi_agent_icd/datasets/mimiciii_50/
 multi_agent_icd/datasets/mimiciii_clean/
+multi_agent_icd/datasets/mimiciv_50/
+multi_agent_icd/datasets/mimiciv_clean/
 multi_agent_icd/datasets/mimiciv_icd9/
 multi_agent_icd/datasets/mimiciv_icd10/

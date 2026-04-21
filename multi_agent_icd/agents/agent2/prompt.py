@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from multi_agent_icd.utils.clinical_text import compact_evidence_index_for_prompt
+
 
 def resolve_agent2_code_systems(patient_context: dict | None = None) -> tuple[str, str, str]:
     context = patient_context or {}
@@ -106,7 +108,7 @@ def build_agent2_prompts(
     candidate_output_limit: int | None = None,
 ) -> dict[str, str]:
     patient_context = patient_context or {}
-    evidence_index = evidence_index or []
+    prompt_evidence_index = compact_evidence_index_for_prompt(evidence_index)
     retrieved_knowledge = retrieved_knowledge or []
     candidate_code_set = candidate_code_set or []
     candidate_code_records = candidate_code_records or []
@@ -164,7 +166,9 @@ def build_agent2_prompts(
             ]
         )
     if candidate_output_limit is not None:
-        candidate_rules.append(f"- Return exactly {candidate_output_limit} total code candidates across principal_diagnosis, secondary_diagnoses, and procedures when the allowed candidate set contains at least {candidate_output_limit} codes.")
+        candidate_rules.append(
+            f"- Return at most {candidate_output_limit} total code candidates across principal_diagnosis, secondary_diagnoses, and procedures."
+        )
 
     knowledge_section: list[str] = []
     if retrieved_knowledge:
@@ -194,7 +198,7 @@ def build_agent2_prompts(
             json.dumps(structured_case_summary, indent=2, ensure_ascii=False),
             "",
             "Evidence index from the raw note:",
-            json.dumps(evidence_index, indent=2, ensure_ascii=False),
+            json.dumps(prompt_evidence_index, indent=2, ensure_ascii=False),
             *knowledge_section,
             *candidate_rules,
             "",

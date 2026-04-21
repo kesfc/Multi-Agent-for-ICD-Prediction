@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from multi_agent_icd.utils.clinical_text import compact_evidence_index_for_prompt
+
 
 AGENT_3_JSON_TEMPLATE = {
     "case_summary": "<short reusable summary of the coding-relevant clinical pattern>",
@@ -39,7 +41,7 @@ def build_agent3_prompts(
     extra_codes: list[str] | None = None,
 ) -> dict[str, str]:
     patient_context = patient_context or {}
-    evidence_index = evidence_index or []
+    prompt_evidence_index = compact_evidence_index_for_prompt(evidence_index)
     gold_codes = gold_codes or []
     predicted_codes = predicted_codes or []
     correct_codes = correct_codes or []
@@ -71,7 +73,7 @@ def build_agent3_prompts(
             json.dumps(structured_case_summary, indent=2, ensure_ascii=False),
             "",
             "Evidence index from the raw note:",
-            json.dumps(evidence_index, indent=2, ensure_ascii=False),
+            json.dumps(prompt_evidence_index, indent=2, ensure_ascii=False),
             "",
             "Gold ICD codes:",
             json.dumps(gold_codes, indent=2, ensure_ascii=False),

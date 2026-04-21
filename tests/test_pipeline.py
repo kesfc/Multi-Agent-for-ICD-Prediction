@@ -15,7 +15,7 @@ from multi_agent_icd import (
 )
 from multi_agent_icd.agents.agent1.prompt import build_agent1_prompts
 from multi_agent_icd.agents.agent2.prompt import build_agent2_prompts, resolve_agent2_code_systems
-from multi_agent_icd.utils.clinical_text import build_evidence_index
+from multi_agent_icd.utils.clinical_text import build_evidence_index, compact_evidence_index_for_prompt
 from multi_agent_icd.run import PipelineState
 
 
@@ -83,6 +83,28 @@ class AgentPipelineTests(unittest.TestCase):
         self.assertNotIn("l2 fracture", prompts["user_prompt"].lower())
         self.assertNotIn("corpectomy", prompts["user_prompt"].lower())
         self.assertNotIn("posterior fusion", prompts["user_prompt"].lower())
+
+    def test_agent1_prompt_compacts_evidence_fields(self):
+        prompts = build_agent1_prompts(
+            note_text="Hospital Course: acute blood loss anemia",
+            patient_context={},
+            evidence_index=[
+                {
+                    "id": "E37",
+                    "section": "hospital_course",
+                    "section_label": "Hospital Course",
+                    "text": "acute blood loss anemia",
+                    "start_char": 5231,
+                    "end_char": 5254,
+                }
+            ],
+        )
+
+        self.assertIn('"id": "E37"', prompts["user_prompt"])
+        self.assertIn('"text": "acute blood loss anemia"', prompts["user_prompt"])
+        self.assertNotIn("section_label", prompts["user_prompt"])
+        self.assertNotIn("start_char", prompts["user_prompt"])
+        self.assertNotIn("end_char", prompts["user_prompt"])
 
     def test_agent2_returns_grounded_code_structure(self):
         llm = StubLLM(
@@ -154,6 +176,46 @@ class AgentPipelineTests(unittest.TestCase):
         self.assertIn("Gout, unspecified", prompts["user_prompt"])
         self.assertIn("End stage renal disease", prompts["user_prompt"])
         self.assertIn("source of truth", prompts["user_prompt"])
+
+    def test_agent2_prompt_compacts_evidence_fields(self):
+        prompts = build_agent2_prompts(
+            structured_case_summary={"discharge_diagnosis": ["anemia"]},
+            patient_context={"coding_version": "ICD-10"},
+            evidence_index=[
+                {
+                    "id": "E37",
+                    "section": "hospital_course",
+                    "section_label": "Hospital Course",
+                    "text": "acute blood loss anemia",
+                    "start_char": 5231,
+                    "end_char": 5254,
+                }
+            ],
+        )
+
+        self.assertIn('"id": "E37"', prompts["user_prompt"])
+        self.assertIn('"text": "acute blood loss anemia"', prompts["user_prompt"])
+        self.assertNotIn("section_label", prompts["user_prompt"])
+        self.assertNotIn("start_char", prompts["user_prompt"])
+        self.assertNotIn("end_char", prompts["user_prompt"])
+
+    def test_compact_evidence_index_for_prompt_merges_short_adjacent_items(self):
+        compacted = compact_evidence_index_for_prompt(
+            [
+                {"id": "E1", "section": "hospital_course", "text": "Post op pain improved."},
+                {"id": "E2", "section": "hospital_course", "text": "Ambulating with assistance."},
+                {"id": "E3", "section": "hospital_course", "text": "98.6"},
+                {"id": "E4", "section": "discharge_diagnosis", "text": "Pneumonia."},
+            ]
+        )
+
+        self.assertEqual(
+            compacted,
+            [
+                {"id": "E1", "text": "Post op pain improved. Ambulating with assistance."},
+                {"id": "E4", "text": "Pneumonia."},
+            ],
+        )
 
     def test_agent2_uses_icd9_defaults_when_dataset_requests_it(self):
         llm = StubLLM(

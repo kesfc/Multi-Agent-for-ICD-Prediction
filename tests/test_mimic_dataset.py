@@ -285,6 +285,13 @@ class MIMICDatasetTests(unittest.TestCase):
         self.assertEqual(summary["num_examples"], 2)
         self.assertEqual(summary["true_positives"], 3)
         self.assertEqual(summary["total_predicted_codes"], 4)
+        self.assertAlmostEqual(summary["micro_precision"], 0.75)
+        self.assertAlmostEqual(summary["micro_recall"], 1.0)
+        self.assertAlmostEqual(summary["micro_f1"], 0.8571428571)
+        self.assertAlmostEqual(summary["macro_precision"], 0.75)
+        self.assertAlmostEqual(summary["macro_recall"], 1.0)
+        self.assertAlmostEqual(summary["macro_f1"], 0.8333333333)
+        self.assertEqual(summary["macro_label_count"], 2)
         self.assertEqual(len(written_lines), 2)
 
     def test_run_testset_supports_feather_dataset_dir(self):
@@ -334,9 +341,9 @@ class MIMICDatasetTests(unittest.TestCase):
 
         self.assertEqual(summary["candidate_output_limit"], 5)
         self.assertEqual(summary["candidate_code_count"], 5)
-        self.assertEqual(summary["total_predicted_codes"], 5)
+        self.assertEqual(summary["total_predicted_codes"], 2)
         self.assertEqual(summary["precision_at_5"], 0.4)
-        self.assertEqual(written["predicted_codes"], ["J18.9", "I10", "E11.9", "N17.9", "I50.9"])
+        self.assertEqual(written["predicted_codes"], ["J18.9", "I10"])
         self.assertEqual(written["candidate_output_limit"], 5)
 
     def test_run_testset_filters_by_hadm_ids(self):
@@ -413,6 +420,39 @@ class MIMICDatasetTests(unittest.TestCase):
         self.assertEqual(written[1]["status"], "failed")
         self.assertEqual(written[1]["predicted_codes"], [])
         self.assertIn("synthetic failure", written[1]["error"])
+
+    def test_run_testset_top_code_metrics_ignore_non_top_gold_labels(self):
+        with workspace_tempdir() as tmpdir:
+            base = Path(tmpdir)
+            dataset_dir = base / "mimic4_icd10"
+            dataset_dir.mkdir(parents=True, exist_ok=True)
+            csv_path = dataset_dir / "test_full.csv"
+            top_codes_path = dataset_dir / "TOP_50_CODES.csv"
+            output_path = base / "predictions.jsonl"
+            csv_path.write_text(
+                "subject_id,hadm_id,text,labels,length\n"
+                "1,2,example note one,J18.9;Z99.89,42\n",
+                encoding="utf-8",
+            )
+            top_codes_path.write_text("J18.9\nI10\nE11.9\nN17.9\nI50.9\n", encoding="utf-8")
+
+            summary = run_testset(
+                csv_path=csv_path,
+                controller=StubController(),
+                output_path=output_path,
+                top_codes_path=top_codes_path,
+                candidate_output_limit=5,
+            )
+
+        self.assertEqual(summary["total_gold_codes"], 1)
+        self.assertEqual(summary["top_code_gold_codes"], 1)
+        self.assertAlmostEqual(summary["micro_precision"], 0.5)
+        self.assertAlmostEqual(summary["micro_recall"], 1.0)
+        self.assertAlmostEqual(summary["micro_f1"], 2 / 3)
+        self.assertAlmostEqual(summary["macro_precision"], 0.2)
+        self.assertAlmostEqual(summary["macro_recall"], 0.2)
+        self.assertAlmostEqual(summary["macro_f1"], 0.2)
+        self.assertEqual(summary["macro_label_count"], 5)
 
     def test_run_testset_can_request_agent3_memory_updates(self):
         with workspace_tempdir() as tmpdir:

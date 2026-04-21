@@ -12,6 +12,7 @@ DEFAULT_QWEN_MODEL_NAME = os.getenv(
     "QWEN_MODEL_NAME",
     "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
 )
+DEFAULT_QWEN_MAX_NEW_TOKENS = int(os.getenv("QWEN_MAX_NEW_TOKENS", "2048"))
 
 
 def _strip_thinking_blocks(text: str) -> str:
@@ -66,11 +67,12 @@ class LocalQwenLLM:
         model_name: str | None = None,
         torch_dtype: str = "auto",
         device_map: str = "auto",
-        max_new_tokens: int = 2048,
+        max_new_tokens: int = DEFAULT_QWEN_MAX_NEW_TOKENS,
         temperature: float = 0.2,
         top_p: float = 0.9,
         top_k: int = 20,
         enable_thinking: bool = False,
+        low_cpu_mem_usage: bool = True,
     ) -> None:
         self.model_name = model_name or DEFAULT_QWEN_MODEL_NAME
         self.torch_dtype = torch_dtype
@@ -80,6 +82,7 @@ class LocalQwenLLM:
         self.top_p = top_p
         self.top_k = top_k
         self.enable_thinking = enable_thinking
+        self.low_cpu_mem_usage = low_cpu_mem_usage
 
     def _load_model(self) -> tuple[Any, Any]:
         cache_key = (self.model_name, self.torch_dtype, self.device_map)
@@ -97,10 +100,23 @@ class LocalQwenLLM:
                 ) from exc
 
             tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            model_kwargs: dict[str, Any] = {
+                "torch_dtype": self.torch_dtype,
+                "low_cpu_mem_usage": self.low_cpu_mem_usage,
+            }
+            try:
+                import torch
+            except ImportError:
+                torch = None
+
+            if self.device_map == "auto" and torch is not None and not torch.cuda.is_available():
+                model_kwargs["device_map"] = None
+            else:
+                model_kwargs["device_map"] = self.device_map
+
             model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
-                torch_dtype=self.torch_dtype,
-                device_map=self.device_map,
+                **model_kwargs,
             )
 
             self._cache[cache_key] = (tokenizer, model)

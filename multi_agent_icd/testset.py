@@ -32,6 +32,10 @@ class TestSetSummary:
     top_code_gold_codes: int
     average_gold_codes: float
     average_predicted_codes: float
+    macro_precision: float
+    macro_recall: float
+    macro_f1: float
+    macro_label_count: int
     micro_precision: float
     micro_recall: float
     micro_f1: float
@@ -74,6 +78,10 @@ class TestSetSummary:
             ),
             "average_gold_codes": self.average_gold_codes,
             "average_predicted_codes": self.average_predicted_codes,
+            "macro_precision": self.macro_precision,
+            "macro_recall": self.macro_recall,
+            "macro_f1": self.macro_f1,
+            "macro_label_count": self.macro_label_count,
             "micro_precision": self.micro_precision,
             "micro_recall": self.micro_recall,
             "micro_f1": self.micro_f1,
@@ -91,6 +99,10 @@ def _safe_divide(numerator: float, denominator: float) -> float:
     return numerator / denominator if denominator else 0.0
 
 
+def _safe_f1(precision: float, recall: float) -> float:
+    return _safe_divide(2 * precision * recall, precision + recall) if (precision + recall) else 0.0
+
+
 def _validate_candidate_output_limit(candidate_output_limit: int) -> int:
     if isinstance(candidate_output_limit, bool):
         raise ValueError("candidate_output_limit must be a positive integer.")
@@ -101,6 +113,53 @@ def _validate_candidate_output_limit(candidate_output_limit: int) -> int:
     if value <= 0:
         raise ValueError("candidate_output_limit must be a positive integer.")
     return value
+
+
+def _accumulate_label_confusion(
+    *,
+    gold_set: set[str],
+    predicted_set: set[str],
+    true_positives_by_label: dict[str, int],
+    false_positives_by_label: dict[str, int],
+    false_negatives_by_label: dict[str, int],
+) -> None:
+    for code in predicted_set & gold_set:
+        true_positives_by_label[code] = true_positives_by_label.get(code, 0) + 1
+    for code in predicted_set - gold_set:
+        false_positives_by_label[code] = false_positives_by_label.get(code, 0) + 1
+    for code in gold_set - predicted_set:
+        false_negatives_by_label[code] = false_negatives_by_label.get(code, 0) + 1
+
+
+def _compute_macro_metrics(
+    *,
+    label_space: set[str],
+    true_positives_by_label: dict[str, int],
+    false_positives_by_label: dict[str, int],
+    false_negatives_by_label: dict[str, int],
+) -> tuple[float, float, float]:
+    if not label_space:
+        return 0.0, 0.0, 0.0
+
+    precision_total = 0.0
+    recall_total = 0.0
+    f1_total = 0.0
+    for code in label_space:
+        true_positives = true_positives_by_label.get(code, 0)
+        false_positives = false_positives_by_label.get(code, 0)
+        false_negatives = false_negatives_by_label.get(code, 0)
+        precision = _safe_divide(true_positives, true_positives + false_positives)
+        recall = _safe_divide(true_positives, true_positives + false_negatives)
+        precision_total += precision
+        recall_total += recall
+        f1_total += _safe_f1(precision, recall)
+
+    label_count = len(label_space)
+    return (
+        _safe_divide(precision_total, label_count),
+        _safe_divide(recall_total, label_count),
+        _safe_divide(f1_total, label_count),
+    )
 
 
 def extract_predicted_codes(
@@ -303,6 +362,10 @@ def run_testset(
     total_gold_codes = 0
     total_predicted_codes = 0
     true_positives = 0
+    macro_label_space = set(candidate_code_set)
+    true_positives_by_label: dict[str, int] = {}
+    false_positives_by_label: dict[str, int] = {}
+    false_negatives_by_label: dict[str, int] = {}
     exact_match_count = 0
     precision_at_k_total = 0.0
     precision_at_k_covered_total = 0.0
@@ -338,6 +401,7 @@ def run_testset(
             state: dict[str, Any] = {}
             gold_set = set(example.labels)
             top_code_gold_set = gold_set & candidate_code_lookup if candidate_code_lookup else gold_set
+            evaluation_gold_set = top_code_gold_set if candidate_code_set else gold_set
             top_code_gold_labels = [code for code in example.labels if code in top_code_gold_set]
             requested_agents = ["agent1", "agent2"]
             training_context = None
@@ -364,10 +428,18 @@ def run_testset(
                 if not continue_on_error:
                     raise
                 failed_examples += 1
-                if top_code_gold_set:
+                if evaluation_gold_set:
                     covered_examples += 1
-                total_gold_codes += len(gold_set)
+                total_gold_codes += len(evaluation_gold_set)
                 top_code_gold_codes += len(top_code_gold_set)
+                macro_label_space.update(evaluation_gold_set)
+                _accumulate_label_confusion(
+                    gold_set=evaluation_gold_set,
+                    predicted_set=set(),
+                    true_positives_by_label=true_positives_by_label,
+                    false_positives_by_label=false_positives_by_label,
+                    false_negatives_by_label=false_negatives_by_label,
+                )
                 if writer is not None:
                     writer.write(
                         json.dumps(
@@ -390,28 +462,43 @@ def run_testset(
                 agent2_output,
                 candidate_output_limit=normalized_candidate_output_limit,
                 allowed_codes=candidate_code_set,
+                fill_to_limit=False,
+            )
+            ranked_codes = extract_predicted_codes(
+                agent2_output,
+                candidate_output_limit=normalized_candidate_output_limit,
+                allowed_codes=candidate_code_set,
                 fill_to_limit=bool(candidate_code_set),
             )
 
             predicted_set = set(predicted_codes)
-            top_code_hits = set(predicted_codes[:normalized_candidate_output_limit]) & top_code_gold_set
-            if top_code_gold_set:
+            macro_label_space.update(evaluation_gold_set)
+            macro_label_space.update(predicted_set)
+            _accumulate_label_confusion(
+                gold_set=evaluation_gold_set,
+                predicted_set=predicted_set,
+                true_positives_by_label=true_positives_by_label,
+                false_positives_by_label=false_positives_by_label,
+                false_negatives_by_label=false_negatives_by_label,
+            )
+            top_code_hits = set(ranked_codes[:normalized_candidate_output_limit]) & evaluation_gold_set
+            if evaluation_gold_set:
                 covered_examples += 1
                 precision_at_k_covered_total += _safe_divide(
                     len(top_code_hits),
                     normalized_candidate_output_limit,
                 )
-                recall_at_k_top_code_total += _safe_divide(len(top_code_hits), len(top_code_gold_set))
+                recall_at_k_top_code_total += _safe_divide(len(top_code_hits), len(evaluation_gold_set))
 
             precision_at_k_total += _safe_divide(
-                len(gold_set & set(predicted_codes[:normalized_candidate_output_limit])),
+                len(evaluation_gold_set & set(ranked_codes[:normalized_candidate_output_limit])),
                 normalized_candidate_output_limit,
             )
-            total_gold_codes += len(gold_set)
+            total_gold_codes += len(evaluation_gold_set)
             top_code_gold_codes += len(top_code_gold_set)
             total_predicted_codes += len(predicted_set)
-            true_positives += len(gold_set & predicted_set)
-            if gold_set == predicted_set:
+            true_positives += len(evaluation_gold_set & predicted_set)
+            if evaluation_gold_set == predicted_set:
                 exact_match_count += 1
 
             if writer is not None:
@@ -441,7 +528,13 @@ def run_testset(
 
     precision = _safe_divide(true_positives, total_predicted_codes)
     recall = _safe_divide(true_positives, total_gold_codes)
-    f1 = _safe_divide(2 * precision * recall, precision + recall) if (precision + recall) else 0.0
+    f1 = _safe_f1(precision, recall)
+    macro_precision, macro_recall, macro_f1 = _compute_macro_metrics(
+        label_space=macro_label_space,
+        true_positives_by_label=true_positives_by_label,
+        false_positives_by_label=false_positives_by_label,
+        false_negatives_by_label=false_negatives_by_label,
+    )
 
     summary = TestSetSummary(
         dataset_path=str(dataset_path),
@@ -459,6 +552,10 @@ def run_testset(
         top_code_gold_codes=top_code_gold_codes,
         average_gold_codes=_safe_divide(total_gold_codes, total_examples),
         average_predicted_codes=_safe_divide(total_predicted_codes, total_examples),
+        macro_precision=macro_precision,
+        macro_recall=macro_recall,
+        macro_f1=macro_f1,
+        macro_label_count=len(macro_label_space),
         micro_precision=precision,
         micro_recall=recall,
         micro_f1=f1,

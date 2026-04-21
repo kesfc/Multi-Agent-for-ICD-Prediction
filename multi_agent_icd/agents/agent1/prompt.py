@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from multi_agent_icd.utils.clinical_text import compact_evidence_index_for_prompt
+
 
 AGENT_1_JSON_TEMPLATE = {
     "gender": "<male|female|unknown>",
@@ -30,7 +32,7 @@ def build_agent1_prompts(
     evidence_index: list[dict] | None = None,
 ) -> dict[str, str]:
     patient_context = patient_context or {}
-    evidence_index = evidence_index or []
+    prompt_evidence_index = compact_evidence_index_for_prompt(evidence_index)
 
     system_prompt = " ".join(
         [
@@ -54,7 +56,7 @@ def build_agent1_prompts(
             json.dumps(patient_context, indent=2),
             "",
             "Evidence index:",
-            json.dumps(evidence_index, indent=2),
+            json.dumps(prompt_evidence_index, indent=2),
             "",
             "Raw clinical note:",
             note_text,
